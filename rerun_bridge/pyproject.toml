@@ -1,0 +1,18 @@
+[project]
+name = "woosh-rerun-bridge"
+version = "0.1.0"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "rerun-sdk==0.36.1",
+]
+
+[project.optional-dependencies]
+sidecar = [
+  "fastapi==0.141.1",
+  "requests==2.34.2",
+  "uvicorn==0.52.3",
+  "websockets==16.1.1",
+]
+
+[tool.uv]
+package = false

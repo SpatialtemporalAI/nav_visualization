@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Rust
+target/
+
+# Build and release output
+dist/
+*.zip
+*.sha256
+!BUNDLE-MANIFEST.sha256
+
+# Runtime data and local settings
+log/
+*.rrd
+woosh-sidecar.log
+woosh-viewer.toml
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
