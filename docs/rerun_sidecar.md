@@ -1,5 +1,8 @@
 # Remote Rerun sidecar mode
 
+> Legacy development path. Current Windows releases integrate this data path
+> directly into the Rust Viewer and do not package or launch the Python sidecar.
+
 The remote sidecar adds Rerun to an already-running navigation deployment
 without installing Rerun on the robot or starting a second navigation process.
 It is intended for robots whose existing `robot_nav` service exposes the legacy

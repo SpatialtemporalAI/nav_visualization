@@ -1,6 +1,6 @@
 [package]
 name = "woosh-viewer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
@@ -8,15 +8,20 @@ publish = false
 
 [dependencies]
 mimalloc = "0.1.48"
+ndarray = "0.16.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.1"
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+ureq = { version = "3.4", default-features = false, features = ["json"] }
 
 # The public `rerun` facade re-exports the embedded viewer API when the
 # `native_viewer` feature is enabled. Use the published crate so Windows
 # builds don't need to clone Rerun's large Git repository.
 rerun = { version = "=0.36.1", default-features = false, features = [
   "native_viewer",
+  "sdk",
+  "server",
 ] }
 
 [profile.release]

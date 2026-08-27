@@ -19,34 +19,12 @@ impl ControlEndpoint {
     pub fn display_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
-
-    pub fn replay_url(&self, task_id: &str) -> String {
-        format!(
-            "{}/viz/api/replay/tasks/{}/recording.rrd",
-            self.display_url(),
-            percent_encode_path_segment(task_id)
-        )
-    }
-}
-
-fn percent_encode_path_segment(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            use std::fmt::Write as _;
-            let _ = write!(encoded, "%{byte:02X}");
-        }
-    }
-    encoded
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActionKind {
     Refresh,
     Status,
-    ReplayTasks,
     Navigate,
     Stop,
     Recording,
@@ -57,7 +35,6 @@ impl ActionKind {
         match self {
             Self::Refresh => "刷新状态",
             Self::Status => "同步状态",
-            Self::ReplayTasks => "加载回放",
             Self::Navigate => "提交导航",
             Self::Stop => "停止导航",
             Self::Recording => "更新录制",
@@ -69,7 +46,6 @@ impl ActionKind {
 pub enum ControlCommand {
     Refresh,
     Status,
-    LoadReplayTasks,
     Navigate { goal_text: String, dry_run: bool },
     Stop,
     SetRecording(bool),
@@ -80,7 +56,6 @@ impl ControlCommand {
         match self {
             Self::Refresh => ActionKind::Refresh,
             Self::Status => ActionKind::Status,
-            Self::LoadReplayTasks => ActionKind::ReplayTasks,
             Self::Navigate { .. } => ActionKind::Navigate,
             Self::Stop => ActionKind::Stop,
             Self::SetRecording(_) => ActionKind::Recording,
@@ -101,29 +76,7 @@ pub struct ResponseData {
     pub summary_is_error: bool,
     pub labels: Option<Vec<String>>,
     pub recording_enabled: Option<bool>,
-    pub operator_status: Option<OperatorStatus>,
     pub navigation_running: Option<bool>,
-    pub replay_tasks: Option<Vec<ReplayTask>>,
-}
-
-#[derive(Debug, Default)]
-pub struct OperatorStatus {
-    pub schema_version: String,
-    pub task_id: Option<String>,
-    pub status: String,
-    pub goal_text: Option<String>,
-    pub navigation_running: bool,
-    pub upstream_connected: bool,
-    pub upstream_error: Option<String>,
-    pub last_upstream_message_at: Option<f64>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ReplayTask {
-    pub task_id: String,
-    pub goal_text: Option<String>,
-    pub status: String,
-    pub has_rerun_recording: bool,
 }
 
 pub struct ControlClient {
@@ -182,7 +135,6 @@ fn execute(endpoint: &ControlEndpoint, command: ControlCommand) -> Result<Respon
     match command {
         ControlCommand::Refresh => refresh(endpoint),
         ControlCommand::Status => operator_status(endpoint),
-        ControlCommand::LoadReplayTasks => replay_tasks(endpoint),
         ControlCommand::Navigate { goal_text, dry_run } => {
             let body = json!({"goal_text": goal_text, "dry_run": dry_run}).to_string();
             let response = request(endpoint, "POST", "/viz/api/navigation/text", Some(&body))?;
@@ -249,90 +201,20 @@ fn refresh(endpoint: &ControlEndpoint) -> Result<ResponseData, String> {
     let mut response = operator_status(endpoint)?;
     response.summary = format!("控制服务在线，已加载 {} 个地点", labels.len());
     response.labels = Some(labels);
+    if let Ok(recording) = request(endpoint, "GET", "/viz/api/dynamic-map/recording", None)
+        && let Ok(recording) = serde_json::from_str::<Value>(&recording)
+    {
+        response.recording_enabled = recording.get("enabled").and_then(Value::as_bool);
+    }
     Ok(response)
 }
 
 fn operator_status(endpoint: &ControlEndpoint) -> Result<ResponseData, String> {
-    let body = request(endpoint, "GET", "/viz/api/operator/status", None)?;
-    let value: Value =
-        serde_json::from_str(&body).map_err(|err| format!("操作状态不是有效 JSON：{err}"))?;
-    let task = value
-        .get("task")
-        .ok_or_else(|| "操作状态缺少 task 字段".to_owned())?;
-    let status = OperatorStatus {
-        schema_version: value
-            .get("schema_version")
-            .and_then(Value::as_str)
-            .unwrap_or("—")
-            .to_owned(),
-        task_id: task
-            .get("task_id")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-        status: task
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("idle")
-            .to_owned(),
-        goal_text: task
-            .get("goal_text")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-        navigation_running: value
-            .get("navigation_running")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        upstream_connected: value
-            .get("upstream_connected")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        upstream_error: value
-            .get("upstream_error")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-        last_upstream_message_at: value
-            .get("last_upstream_message_at")
-            .and_then(Value::as_f64),
-    };
+    let body = request(endpoint, "GET", "/viz/api/map/metadata", None)?;
+    let _: Value =
+        serde_json::from_str(&body).map_err(|err| format!("地图状态不是有效 JSON：{err}"))?;
     Ok(ResponseData {
-        summary: "操作状态已同步".to_owned(),
-        recording_enabled: value.get("dynamic_map_recording").and_then(Value::as_bool),
-        operator_status: Some(status),
-        ..Default::default()
-    })
-}
-
-fn replay_tasks(endpoint: &ControlEndpoint) -> Result<ResponseData, String> {
-    let body = request(endpoint, "GET", "/viz/api/replay/tasks?limit=20", None)?;
-    let value: Value =
-        serde_json::from_str(&body).map_err(|err| format!("回放列表不是有效 JSON：{err}"))?;
-    let tasks = value
-        .as_array()
-        .ok_or_else(|| "回放列表不是数组".to_owned())?
-        .iter()
-        .filter_map(|item| {
-            Some(ReplayTask {
-                task_id: item.get("task_id")?.as_str()?.to_owned(),
-                goal_text: item
-                    .get("goal_text")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
-                status: item
-                    .get("status")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_owned(),
-                has_rerun_recording: item
-                    .get("has_rerun_recording")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-            })
-        })
-        .collect::<Vec<_>>();
-    let available = tasks.iter().filter(|task| task.has_rerun_recording).count();
-    Ok(ResponseData {
-        summary: format!("已找到 {available} 个 Rerun 任务回放"),
-        replay_tasks: Some(tasks),
+        summary: "机器人控制服务在线".to_owned(),
         ..Default::default()
     })
 }
@@ -353,10 +235,10 @@ fn request(
     let mut stream =
         TcpStream::connect_timeout(&socket, CONNECT_TIMEOUT).map_err(|err| match err.kind() {
             std::io::ErrorKind::ConnectionRefused => {
-                "后台服务尚未就绪，首次启动可能需要几分钟".to_owned()
+                "机器人控制服务拒绝连接，请检查地址和服务状态".to_owned()
             }
-            std::io::ErrorKind::TimedOut => "连接后台服务超时，请稍后重试".to_owned(),
-            _ => format!("无法连接后台服务：{err}"),
+            std::io::ErrorKind::TimedOut => "连接机器人控制服务超时，请检查网络".to_owned(),
+            _ => format!("无法连接机器人控制服务：{err}"),
         })?;
     stream.set_read_timeout(Some(IO_TIMEOUT)).ok();
     stream.set_write_timeout(Some(IO_TIMEOUT)).ok();

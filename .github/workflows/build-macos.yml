@@ -1,0 +1,82 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "12.0"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            artifact: woosh-viewer-macos-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            artifact: woosh-viewer-macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: operator/woosh_viewer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup target add "${{ matrix.target }}" --toolchain 1.95.0
+      - name: Test
+        run: cargo +1.95.0 test --locked --target "${{ matrix.target }}"
+      - name: Build release binary
+        run: cargo +1.95.0 build --release --locked --target "${{ matrix.target }}"
+      - name: Stage binary
+        run: |
+          mkdir -p "artifact/${{ matrix.target }}"
+          cp "target/${{ matrix.target }}/release/woosh-viewer" \
+             "artifact/${{ matrix.target }}/woosh-viewer"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: operator/woosh_viewer/artifact/${{ matrix.target }}/woosh-viewer
+          if-no-files-found: error
+
+  package:
+    name: Package Universal app
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: woosh-viewer-macos-arm64
+          path: artifacts/arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: woosh-viewer-macos-x86_64
+          path: artifacts/x86_64
+      - name: Build app bundle, ZIP, and DMG
+        run: |
+          chmod +x operator/woosh_viewer/build-macos.sh
+          operator/woosh_viewer/build-macos.sh \
+            --package-only \
+            --arm64-binary "${GITHUB_WORKSPACE}/artifacts/arm64/woosh-viewer" \
+            --x86_64-binary "${GITHUB_WORKSPACE}/artifacts/x86_64/woosh-viewer"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: woosh-viewer-macos-universal
+          path: |
+            operator/woosh_viewer/dist/woosh-viewer-macos-universal.zip
+            operator/woosh_viewer/dist/woosh-viewer-macos-universal.dmg
+            operator/woosh_viewer/dist/woosh-viewer-macos-universal.sha256
+          if-no-files-found: error

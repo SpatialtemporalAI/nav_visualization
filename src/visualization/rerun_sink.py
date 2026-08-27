@@ -133,7 +133,7 @@ class _RerunRuntime:
                     row_shares=[3, 2],
                     name="Live Monitor",
                 ),
-                column_shares=[1.25, 1],
+                column_shares=[1.65, 1],
                 name="Navigation Workspace",
             ),
             rrb.TimePanel(state="collapsed", timeline="navigation_time"),
@@ -311,8 +311,8 @@ class _RerunRuntime:
             self._rr.AnnotationContext(
                 [
                     (0, "Free", (0, 0, 0, 0)),
-                    (1, "Inflated", (255, 170, 40, 180)),
-                    (2, "Occupied", (255, 70, 80, 230)),
+                    (1, "Inflated", (214, 172, 70, 155)),
+                    (2, "Occupied", (245, 82, 65, 225)),
                 ]
             ),
             static=True,
@@ -348,8 +348,8 @@ class _RerunRuntime:
                 "world/planner_allowed_area",
                 self._rr.LineStrips2D(
                     pixel_polygons,
-                    colors=[80, 220, 255, 180],
-                    radii=1.5,
+                    colors=[55, 196, 225, 155],
+                    radii=self._rr.Radius.ui_points(1.5),
                     draw_order=2.0,
                 ),
                 static=False,
@@ -391,8 +391,8 @@ class _RerunRuntime:
                 stream,
                 "world/robot",
                 message.get("pose"),
-                [20, 210, 190],
-                label="Robot",
+                [42, 203, 225],
+                label="Robot 定位",
                 marker="robot",
                 draw_order=30.0,
             )
@@ -400,10 +400,10 @@ class _RerunRuntime:
                 stream,
                 "world/vpr_pose",
                 message.get("vpr_pose"),
-                [255, 170, 65, 210],
+                [167, 139, 250],
                 label="VPR 定位",
                 marker="vpr",
-                draw_order=20.0,
+                draw_order=24.0,
             )
         elif message_type == "goal_update":
             goal = message.get("goal") or {}
@@ -411,18 +411,18 @@ class _RerunRuntime:
                 stream,
                 "world/goal",
                 goal.get("pose"),
-                [255, 80, 120],
+                [255, 113, 91],
                 label="导航目标",
                 marker="goal",
-                draw_order=25.0,
+                draw_order=28.0,
             )
         elif message_type == "planner_update":
             self._latest_planner = deepcopy(message)
-            self._log_path(stream, "world/planner/global_path", message.get("global_path"), [50, 230, 140])
-            self._log_path(stream, "world/planner/local_path", message.get("local_path"), [255, 170, 40])
-            self._log_points(stream, "world/planner/waypoints", message.get("waypoints"), [155, 110, 255])
+            self._log_path(stream, "world/planner/global_path", message.get("global_path"), [77, 222, 155])
+            self._log_path(stream, "world/planner/local_path", message.get("local_path"), [255, 191, 71])
+            self._log_points(stream, "world/planner/waypoints", message.get("waypoints"), [167, 139, 250])
             local_goal = message.get("local_goal")
-            self._log_points(stream, "world/planner/local_goal", [local_goal] if local_goal else [], [255, 230, 80])
+            self._log_points(stream, "world/planner/local_goal", [local_goal] if local_goal else [], [255, 220, 92])
             self._log_scalar(stream, "metrics/planner/action_count", len(message.get("actions") or []))
             self._log_scalar(stream, "metrics/planner/action_limit", message.get("action_limit"))
             stream.log(
@@ -465,64 +465,107 @@ class _RerunRuntime:
             stream.log(entity, self._rr.Clear(recursive=True))
             return
         point = self._point_to_pixel([pose["x"], pose["y"]], self._map_metadata)
-        radius = 8.0 if marker == "vpr" else 7.0
+        outline = [12, 12, 12, 245]
+        highlight = [244, 249, 252, 245]
+        theta = float(pose.get("theta", 0.0))
+        hover_label = (
+            f"{label}  ·  x {float(pose['x']):.2f} m  ·  "
+            f"y {float(pose['y']):.2f} m  ·  朝向 {math.degrees(theta):.1f}°"
+        )
+        forward = [math.cos(theta), -math.sin(theta)]
+
+        if marker == "vpr":
+            radii = [10.5, 8.4, 3.2]
+            colors = [outline, color, highlight]
+        elif marker == "robot":
+            # The robot is intentionally a little larger than VPR so the
+            # primary pose remains dominant when both estimates overlap.
+            radii = [13.5, 11.0, 3.8]
+            colors = [outline, color, highlight]
+        else:
+            radii = [12.0, 9.5, 3.4]
+            colors = [outline, color, highlight]
+
+        positions = [point for _ in radii]
+        # Keep labels hidden in the map and attach the readable hover text to
+        # only one layer. Repeating it for every concentric point makes Rerun
+        # stack identical labels when a marker is hovered.
+        labels = ["" for _ in radii]
+        labels[-1] = hover_label
         stream.log(
             entity,
             self._rr.Points2D(
-                [point],
-                colors=color,
-                radii=self._rr.Radius.ui_points(radius),
-                labels=[label],
-                show_labels=True,
-                draw_order=draw_order,
+                positions,
+                colors=colors,
+                radii=[self._rr.Radius.ui_points(radius) for radius in radii],
+                labels=labels,
+                show_labels=False,
+                draw_order=[draw_order + index for index in range(len(radii))],
             ),
         )
 
-        if marker in {"robot", "goal"}:
-            theta = float(pose.get("theta", 0.0))
-            forward = [math.cos(theta), -math.sin(theta)]
-            side = [-forward[1], forward[0]]
-            tip = [point[0] + forward[0] * 17.0, point[1] + forward[1] * 17.0]
-            rear_center = [point[0] - forward[0] * 8.0, point[1] - forward[1] * 8.0]
-            left = [rear_center[0] + side[0] * 8.0, rear_center[1] + side[1] * 8.0]
-            right = [rear_center[0] - side[0] * 8.0, rear_center[1] - side[1] * 8.0]
+        if marker != "vpr":
+            start_length = 7.0 if marker == "robot" else 6.0
+            direction_length = 20.0 if marker == "robot" else 18.0
+            start = [
+                point[0] + forward[0] * start_length,
+                point[1] + forward[1] * start_length,
+            ]
+            tip = [
+                point[0] + forward[0] * direction_length,
+                point[1] + forward[1] * direction_length,
+            ]
             stream.log(
-                f"{entity}/direction",
+                entity,
                 self._rr.LineStrips2D(
-                    [[tip, left, right, tip]],
+                    [[start, tip]],
                     colors=color,
-                    radii=self._rr.Radius.ui_points(2.0),
-                    draw_order=draw_order + 1.0,
+                    radii=self._rr.Radius.ui_points(2.4),
+                    show_labels=False,
+                    draw_order=draw_order + len(radii) + 1.0,
                 ),
             )
-        elif marker == "vpr":
-            cross_size = 12.0
-            stream.log(
-                f"{entity}/crosshair",
-                self._rr.LineStrips2D(
-                    [
-                        [[point[0] - cross_size, point[1]], [point[0] + cross_size, point[1]]],
-                        [[point[0], point[1] - cross_size], [point[0], point[1] + cross_size]],
-                    ],
-                    colors=[255, 220, 150],
-                    radii=self._rr.Radius.ui_points(1.5),
-                    draw_order=draw_order + 1.0,
-                ),
-            )
+
+        stream.log(
+            entity,
+            self._rr.AnyValues(
+                localization_source=label,
+                position_x_m=float(pose["x"]),
+                position_y_m=float(pose["y"]),
+                heading_rad=theta,
+                heading_deg=math.degrees(theta),
+            ),
+        )
 
     def _log_path(self, stream, entity, points, color):
         pixel_points = self._points_to_pixels(points or [], self._map_metadata)
         if len(pixel_points) < 2:
             stream.log(entity, self._rr.Clear(recursive=True))
             return
-        stream.log(entity, self._rr.LineStrips2D([pixel_points], colors=color, radii=2.0, draw_order=6.0))
+        stream.log(
+            entity,
+            self._rr.LineStrips2D(
+                [pixel_points],
+                colors=color,
+                radii=self._rr.Radius.ui_points(2.5),
+                draw_order=6.0,
+            ),
+        )
 
     def _log_points(self, stream, entity, points, color):
         pixel_points = self._points_to_pixels(points or [], self._map_metadata)
         if not pixel_points:
             stream.log(entity, self._rr.Clear(recursive=True))
             return
-        stream.log(entity, self._rr.Points2D(pixel_points, colors=color, radii=5.0, draw_order=8.0))
+        stream.log(
+            entity,
+            self._rr.Points2D(
+                pixel_points,
+                colors=color,
+                radii=self._rr.Radius.ui_points(4.5),
+                draw_order=8.0,
+            ),
+        )
 
     def _log_dynamic_map(self, stream, message):
         now = time()

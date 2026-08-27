@@ -1,5 +1,4 @@
-# Double-click woosh-viewer.exe after setting the robot address here.
-robot_ip = "192.168.123.161"
+# Leave empty on first launch, then enter the address in 连接设置.
+robot_ip = ""
 robot_port = 8008
-control_port = 8010
 rerun_port = 9876

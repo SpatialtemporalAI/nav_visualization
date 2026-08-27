@@ -1,140 +1,81 @@
 # Woosh Viewer
 
-Cross-platform native operator shell that embeds Rerun 0.36.1 and keeps robot
-commands on an independent HTTP control channel.
+Native Windows and macOS operator built around the embedded Rerun 0.36 viewer.
 
-## Start the robot backend
+The application now contains the complete former sidecar data path in Rust:
 
-```bash
-conda activate nav
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-cd /home/unitree/workspace/Woosh_robot/src
-python run_ros.py
-```
+- connects to the robot's `/viz/ws` stream and reconnects automatically;
+- fetches map metadata, occupancy images, and announced camera frames;
+- logs robot/VPR poses, goals, paths, dynamic occupancy, and events to the
+  embedded Rerun server;
+- records task `.rrd` files under `%LOCALAPPDATA%\Woosh\rerun-history`;
+- sends navigation commands directly to the robot only after an explicit click.
 
-The backend starts both the low-rate control API and the Rerun data service.
+Python, PyArrow, uv, FastAPI, and a second Rerun binary are not needed at runtime.
 
-### Remote sidecar mode for an already-running navigation service
-
-Do not start a second `run_ros.py` beside an existing navigation instance. When
-the robot is already running the legacy WebViz backend on port `8008`, use the
-sidecar on the remote operator computer instead. Replace the address below with
-the robot's LAN address:
-
-```bash
-cd /home/unitree/workspace/R-nav/src
-uv run --project ../rerun_bridge --extra sidecar --locked python run_rerun_sidecar.py \
-  --upstream http://192.168.123.161:8008 \
-  --control-port 8010 \
-  --rerun-port 9876
-```
-
-The robot continues to run only its existing navigation service. The remote
-sidecar consumes `/viz/ws`, downloads announced images, converts and records
-Rerun locally, and binds its compatibility API to loopback by default. Configure
-the operator with `robot_ip = "127.0.0.1"`, `control_port = 8010`, and
-`rerun_port = 9876`. Operator actions received locally on `8010` are forwarded
-to the robot's existing `8008`; the sidecar sends no navigation command during
-startup or normal observation.
-
-See [`docs/rerun_sidecar.md`](../../docs/rerun_sidecar.md) for the data flow,
-installation prerequisites, and verification procedure.
-
-## Run
-
-```bash
-cargo run --release -- --robot-ip 192.168.123.161
-```
-
-Command-line flags override `woosh-viewer.toml`. Packaged builds look for that
-file beside the executable, so Windows operators can configure the robot IP and
-then launch the viewer by double-clicking the executable.
-
-The left sidebar also has a **连接设置** panel for changing the service host,
-control port, and Rerun port while the viewer is running. **应用并连接** switches
-both connections without sending a navigation command. Leave **保存到
-woosh-viewer.toml** enabled to reuse those values at the next launch. Late HTTP
-responses from the previous endpoint are ignored after a switch.
-
-In remote sidecar mode, the service host in this panel is normally `127.0.0.1`.
-It identifies the sidecar on the Windows computer, not the physical robot. Set
-the physical robot address with `run-sidecar-windows.ps1 -RobotIp ...`; use
-`-RobotPort` when its existing WebViz service is not on port `8008`.
-
-The default endpoints are:
-
-- Rerun: `rerun+http://<robot-ip>:9876/proxy`
-- Control: `http://<robot-ip>:8008`
-
-The current robot backend already implements the control routes used here:
-
-- `GET /viz/api/operator/status` (one small response per second)
-- `GET /viz/api/replay/tasks?limit=20` (only when replay is opened/refreshed)
-- `GET /viz/api/replay/tasks/<task-id>/recording.rrd` (only for the selected replay)
-- `GET /viz/api/performance` (every two seconds only while its panel is open)
-- `POST /viz/api/navigation/text`
-- `POST /viz/api/navigation/stop`
-- `GET|POST /viz/api/dynamic-map/recording`
-- `GET /viz/api/map/metadata`
-
-High-rate pose, planner, image, and dynamic-map data travel through Rerun only.
-The native viewer deliberately does not connect to `/viz/ws`, avoiding a second
-JSON copy of the visualization stream.
-
-Task playback remains entirely inside Rerun: selecting a history item loads its
-`.rrd` recording and Rerun's native timeline provides play, pause, seek, speed,
-and per-stream inspection. The side panel also provides native light/dark/system
-theme selection. Closing replay or performance panels stops their optional HTTP
-traffic.
-
-## Windows build
-
-To copy only the Windows-relevant source instead of the full robot repository,
-generate the allow-listed transfer bundle on the robot or development machine:
-
-```bash
-python operator/package_windows_bundle.py
-```
-
-Copy `dist/woosh-windows-source.zip` to Windows and follow its
-`README-WINDOWS.md`. The archive excludes `.git`, maps, ROS/navigation code,
-tests, logs, caches, and captures, and verifies every included file against an
-internal SHA-256 manifest.
-
-Install Rust 1.95 with the MSVC target and Visual Studio 2022 Build Tools, then
-run from PowerShell:
+## Run from source
 
 ```powershell
-.\build-windows.ps1
+cargo run --release -- --robot-ip 192.168.123.161 --robot-port 8008
 ```
 
-The generated `dist/windows-x64` directory is the operator package. Edit
-`woosh-viewer.toml` there and double-click `woosh-viewer.exe`. The viewer itself
-does not require Rust, Python, Node.js, or ROS 2 on the target PC. Remote sidecar
-mode additionally uses the locked uv environment described above; it never
-installs anything on the robot.
+Command-line flags override `woosh-viewer.toml`. Packaged Windows builds read
+that file beside `woosh-viewer.exe`; macOS stores it under
+`~/Library/Application Support/Woosh`.
 
-The build script removes Cargo's large `target` cache after copying the package.
-Developers who expect frequent incremental rebuilds can retain it with:
+Supported options:
+
+```text
+--config FILE
+--robot-ip HOST
+--robot-port PORT
+--rerun-port PORT
+--rerun-url URL
+--screenshot FILE
+```
+
+`--rerun-url` is retained for development and replay diagnostics. Normal live
+operation uses the local Rerun server started inside the Viewer.
+
+## Windows release
+
+Install Rust 1.95 with the MSVC target and Visual Studio 2022 Build Tools, then:
 
 ```powershell
 .\build-windows.ps1 -KeepBuildCache
 ```
 
-## Version policy
+The release script produces `dist/windows-x64` and
+`dist/woosh-viewer-windows-x64.zip`. Both contain only the executable and its
+configuration file—no Python runtime or external sidecar. The packaged robot IP
+is empty, so the first launch opens connection settings for the operator.
 
-Rerun's native viewer extension API is unstable. Keep both the robot bridge and
-this application pinned to Rerun 0.36.1 until an intentional migration is made.
+## macOS release
 
-## Local UI smoke test
-
-With the repository's `rerun_bridge` environment installed, generate a sample
-recording and run the optional mock control endpoint:
+On a Mac with Xcode Command Line Tools and Rust 1.95 installed:
 
 ```bash
-../../rerun_bridge/.venv/bin/python demo/create_sample_recording.py
-../../rerun_bridge/.venv/bin/python demo/create_sample_recording.py \
-  /tmp/woosh-viewer-replay.rrd viewer-replay
-python3 demo/mock_control_server.py
-cargo run -- --control-port 18008 --rerun-url /tmp/woosh-viewer-demo.rrd
+chmod +x build-macos.sh
+./build-macos.sh
 ```
+
+The script produces a Universal Application for Apple Silicon and Intel Macs,
+then packages it as `dist/woosh-viewer-macos-universal.zip` and `.dmg`. See
+[README-MACOS.md](README-MACOS.md) for installation and signing details.
+
+## Data and control routes
+
+Read-only live data:
+
+- `GET /viz/api/map/metadata`
+- `GET /viz/api/map/image`
+- `GET` WebSocket `/viz/ws`
+- image URLs announced by the WebSocket stream
+
+Explicit operator controls:
+
+- `POST /viz/api/navigation/text`
+- `POST /viz/api/navigation/stop`
+- `GET|POST /viz/api/dynamic-map/recording`
+
+Rerun is pinned to 0.36.1 because its native viewer extension API is unstable.

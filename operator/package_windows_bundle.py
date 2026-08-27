@@ -14,29 +14,19 @@ DEFAULT_OUTPUT = REPO_ROOT / "dist" / "woosh-windows-source.zip"
 # Explicit allow-list: do not let robot maps, logs, caches, tests, Git history,
 # credentials, or navigation code leak into the Windows transfer package.
 FILES = {
-    "docs/windows_operator_quickstart.md": "README-WINDOWS.md",
-    "docs/rerun_sidecar.md": "docs/rerun_sidecar.md",
+    "README-WINDOWS.md": "README-WINDOWS.md",
+    "LICENSE-APACHE": "LICENSE-APACHE",
+    "LICENSE-MIT": "LICENSE-MIT",
     "operator/package_windows_bundle.py": "operator/package_windows_bundle.py",
     "operator/woosh_viewer/README.md": "operator/woosh_viewer/README.md",
     "operator/woosh_viewer/Cargo.lock": "operator/woosh_viewer/Cargo.lock",
     "operator/woosh_viewer/Cargo.toml": "operator/woosh_viewer/Cargo.toml",
     "operator/woosh_viewer/build-windows.ps1": "operator/woosh_viewer/build-windows.ps1",
-    "operator/woosh_viewer/run-sidecar-windows.ps1": "operator/woosh_viewer/run-sidecar-windows.ps1",
     "operator/woosh_viewer/rust-toolchain.toml": "operator/woosh_viewer/rust-toolchain.toml",
     "operator/woosh_viewer/src/control_client.rs": "operator/woosh_viewer/src/control_client.rs",
     "operator/woosh_viewer/src/main.rs": "operator/woosh_viewer/src/main.rs",
+    "operator/woosh_viewer/src/native_sidecar.rs": "operator/woosh_viewer/src/native_sidecar.rs",
     "operator/woosh_viewer/woosh-viewer.example.toml": "operator/woosh_viewer/woosh-viewer.example.toml",
-    "operator/woosh_viewer/woosh-viewer.sidecar.example.toml": "operator/woosh_viewer/woosh-viewer.sidecar.example.toml",
-    "rerun_bridge/README.md": "rerun_bridge/README.md",
-    "rerun_bridge/pyproject.toml": "rerun_bridge/pyproject.toml",
-    "rerun_bridge/uv.lock": "rerun_bridge/uv.lock",
-    "src/run_rerun_sidecar.py": "src/run_rerun_sidecar.py",
-    "src/visualization/__init__.py": "src/visualization/__init__.py",
-    "src/visualization/models.py": "src/visualization/models.py",
-    "src/visualization/replay_store.py": "src/visualization/replay_store.py",
-    "src/visualization/rerun_sidecar.py": "src/visualization/rerun_sidecar.py",
-    "src/visualization/rerun_sink.py": "src/visualization/rerun_sink.py",
-    "src/visualization/state_hub.py": "src/visualization/state_hub.py",
 }
 
 
