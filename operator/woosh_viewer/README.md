@@ -42,13 +42,15 @@ operation uses the local Rerun server started inside the Viewer.
 Install Rust 1.95 with the MSVC target and Visual Studio 2022 Build Tools, then:
 
 ```powershell
-.\build-windows.ps1 -KeepBuildCache
+.\build-windows.ps1
 ```
 
 The release script produces `dist/windows-x64` and
-`dist/woosh-viewer-windows-x64.zip`. Both contain only the executable and its
-configuration file—no Python runtime or external sidecar. The packaged robot IP
-is empty, so the first launch opens connection settings for the operator.
+`dist/woosh-viewer-windows-x64.zip`, plus its SHA-256 checksum. Both packages
+contain only the executable and its configuration file—no Python runtime or
+external sidecar. The packaged robot IP is empty, so the first launch opens
+connection settings for the operator. Rust build artifacts are retained by
+default for incremental builds; pass `-CleanBuildCache` to remove them.
 
 ## macOS release
 

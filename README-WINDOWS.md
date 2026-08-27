@@ -38,14 +38,18 @@ woosh-viewer.toml     机器人地址和本机 Rerun 端口
 
 ```powershell
 cd C:\path\to\woosh-windows\operator\woosh_viewer
-.\build-windows.ps1 -KeepBuildCache
+.\build-windows.ps1
 ```
+
+构建缓存默认保留，以便后续快速增量编译。仅在需要释放磁盘空间时增加
+`-CleanBuildCache`。
 
 产物位于：
 
 ```text
 operator\woosh_viewer\dist\windows-x64
 operator\woosh_viewer\dist\woosh-viewer-windows-x64.zip
+operator\woosh_viewer\dist\woosh-viewer-windows-x64.zip.sha256
 ```
 
 ## 运行边界

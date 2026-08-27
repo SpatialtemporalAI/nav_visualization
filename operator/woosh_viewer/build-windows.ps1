@@ -1,9 +1,13 @@
 param(
+    [switch]$CleanBuildCache,
     [switch]$KeepBuildCache
 )
 
 $ErrorActionPreference = "Stop"
 $stage = $null
+if ($CleanBuildCache -and $KeepBuildCache) {
+    throw "Use either -CleanBuildCache or -KeepBuildCache, not both."
+}
 
 Push-Location $PSScriptRoot
 try {
@@ -24,6 +28,7 @@ try {
     $distRoot = Join-Path $PSScriptRoot "dist"
     $dist = Join-Path $distRoot "windows-x64"
     $archive = Join-Path $distRoot "woosh-viewer-windows-x64.zip"
+    $checksum = "$archive.sha256"
     $stage = Join-Path $PSScriptRoot ("target\package-windows-x64-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $stage, $distRoot | Out-Null
 
@@ -31,6 +36,8 @@ try {
     Copy-Item "$PSScriptRoot\woosh-viewer.example.toml" (Join-Path $stage "woosh-viewer.toml") -Force
 
     Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -CompressionLevel Optimal -Force
+    $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+    "$archiveHash  $([IO.Path]::GetFileName($archive))" | Set-Content -LiteralPath $checksum -Encoding ascii
 
     if (Test-Path -LiteralPath $dist) {
         $resolvedDist = [IO.Path]::GetFullPath($dist)
@@ -47,11 +54,15 @@ try {
     $zipSize = (Get-Item $archive).Length / 1MB
     Write-Host ("Native Windows package: {0} ({1:N1} MiB executable)" -f $dist, $exeSize)
     Write-Host ("Portable ZIP: {0} ({1:N1} MiB)" -f $archive, $zipSize)
+    Write-Host ("SHA-256: {0}" -f $checksum)
     Write-Host "The package contains only woosh-viewer.exe and woosh-viewer.toml."
 
-    if (-not $KeepBuildCache) {
+    if ($CleanBuildCache) {
         cargo clean
-        Write-Host "Rust build cache removed. Use -KeepBuildCache to retain it for incremental builds."
+        Write-Host "Rust build cache removed because -CleanBuildCache was specified."
+    }
+    else {
+        Write-Host "Rust build cache retained for incremental builds."
     }
 }
 finally {

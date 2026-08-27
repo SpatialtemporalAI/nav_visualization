@@ -39,8 +39,10 @@ Woosh Viewer (Rust)
 
 ## 使用 macOS 版
 
-macOS 版为 Universal Application，同时支持 Apple Silicon 与 Intel Mac。打开
-`woosh-viewer-macos-universal.dmg`，将 **Woosh Viewer** 拖入 Applications 即可。
+macOS 版按架构分别发布。Apple Silicon Mac 使用
+`woosh-viewer-macos-arm64.dmg`，Intel Mac 使用
+`woosh-viewer-macos-intel-x64.dmg`。打开对应安装包后，将 **Woosh Viewer**
+拖入 Applications 即可。
 应用无需 Python 或独立 Sidecar，首次连接时按系统提示允许访问本地网络。
 
 完整说明见 [operator/woosh_viewer/README-MACOS.md](operator/woosh_viewer/README-MACOS.md)。
@@ -51,8 +53,11 @@ macOS 版为 Universal Application，同时支持 Apple Silicon 与 Intel Mac。
 
 ```powershell
 cd operator\woosh_viewer
-.\build-windows.ps1 -KeepBuildCache
+.\build-windows.ps1
 ```
+
+构建缓存默认保留，以便后续增量编译；仅在需要释放磁盘空间时使用
+`.\build-windows.ps1 -CleanBuildCache`。
 
 产物：
 
