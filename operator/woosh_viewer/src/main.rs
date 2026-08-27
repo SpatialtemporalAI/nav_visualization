@@ -10,8 +10,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use control_client::{ActionKind, ControlClient, ControlCommand, ControlEndpoint};
 use native_sidecar::{
     NativeReplayTask as ReplayTask, NativeSidecar, NativeSidecarSettings, NativeStatusSnapshot,
+    delete_replay_task, replay_tasks_in,
 };
-use rerun::external::{eframe, egui, re_crash_handler, re_log, re_memory, re_viewer, tokio};
+use rerun::external::{
+    eframe, egui, re_crash_handler, re_log, re_log_types, re_memory, re_viewer, tokio,
+};
 use serde::{Deserialize, Serialize};
 
 #[global_allocator]
@@ -171,17 +174,19 @@ fn default_config_write_path() -> PathBuf {
 }
 
 fn default_history_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        return std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.join("rerun-history")))
+            .unwrap_or_else(|| PathBuf::from("rerun-history"));
+    }
+    #[cfg(not(target_os = "windows"))]
     platform_data_dir().join("rerun-history")
 }
 
+#[cfg(not(target_os = "windows"))]
 fn platform_data_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        return std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir)
-            .join("Woosh");
-    }
     #[cfg(target_os = "macos")]
     {
         return std::env::var_os("HOME")
@@ -191,7 +196,7 @@ fn platform_data_dir() -> PathBuf {
             .join("Application Support")
             .join("Woosh");
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
@@ -308,11 +313,15 @@ fn save_connection_config(
 
 struct SidecarManager {
     worker: Option<NativeSidecar>,
+    history_dir: PathBuf,
 }
 
 impl SidecarManager {
     fn new(_log_path: PathBuf) -> Self {
-        Self { worker: None }
+        Self {
+            worker: None,
+            history_dir: default_history_dir(),
+        }
     }
 
     fn restart(&mut self, settings: &SidecarSettings) -> Result<(), String> {
@@ -320,7 +329,7 @@ impl SidecarManager {
             robot_ip: settings.robot_ip.clone(),
             robot_port: settings.robot_port,
             rerun_port: settings.rerun_port,
-            history_dir: default_history_dir(),
+            history_dir: self.history_dir.clone(),
         };
         if let Some(worker) = self.worker.as_ref()
             && worker.is_running()
@@ -367,10 +376,15 @@ impl SidecarManager {
     }
 
     fn replay_tasks(&self) -> Vec<ReplayTask> {
-        self.worker
-            .as_ref()
-            .map(NativeSidecar::replay_tasks)
-            .unwrap_or_default()
+        replay_tasks_in(&self.history_dir)
+    }
+
+    fn delete_replay_task(&self, task_dir: &std::path::Path) -> Result<(), String> {
+        delete_replay_task(&self.history_dir, task_dir)
+    }
+
+    fn history_dir(&self) -> &std::path::Path {
+        &self.history_dir
     }
 
     fn stop(&mut self) {
@@ -425,7 +439,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         native_options,
         Box::new(move |cc| {
             re_viewer::customize_eframe_and_setup_renderer(cc)?;
-            let rerun_app = re_viewer::App::new(
+            let mut rerun_app = re_viewer::App::new(
                 main_thread_token,
                 re_viewer::build_info(),
                 re_viewer::AppEnvironment::Custom("Woosh Robot Operator".to_owned()),
@@ -434,6 +448,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 re_viewer::AsyncRuntimeHandle::from_current_tokio_runtime_or_wasmbindgen()?,
             );
+            // Rerun defaults to UTC. Display timestamps in the operator computer's
+            // local timezone while preserving the original Unix timestamps.
+            rerun_app.app_options_mut().timestamp_format =
+                re_log_types::TimestampFormat::local_timezone();
             if has_initial_connection {
                 rerun_app.open_url_or_file(&rerun_url);
             }
@@ -708,6 +726,7 @@ struct ControlPanel {
     replay_loaded: bool,
     replay_tasks: Vec<ReplayTask>,
     replay_error: Option<String>,
+    replay_delete_confirmation: Option<ReplayTask>,
     selected_replay: Option<String>,
     source_label: String,
     requested_source: Option<String>,
@@ -769,6 +788,7 @@ impl ControlPanel {
             replay_loaded: false,
             replay_tasks: Vec::new(),
             replay_error: None,
+            replay_delete_confirmation: None,
             selected_replay: None,
             source_label: "实时数据".to_owned(),
             requested_source: None,
@@ -1092,6 +1112,9 @@ impl ControlPanel {
             .filter(|task| task.has_rerun_recording)
             .count();
         let mut open_task = None;
+        let mut request_delete = None;
+        let mut confirm_delete = None;
+        let mut cancel_delete = false;
         card_frame(ui).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
@@ -1109,7 +1132,11 @@ impl ControlPanel {
                     self.replay_error = None;
                 }
             });
-            ui.small("这些记录保存在当前电脑；选择后可在右侧时间轴中播放。");
+            ui.small(format!(
+                "记录目录：{}",
+                self.sidecar.history_dir().display()
+            ));
+            ui.small("选择记录可在右侧时间轴中播放，也可删除不再需要的记录。");
             if let Some(error) = &self.replay_error {
                 ui.colored_label(egui::Color32::from_rgb(235, 95, 105), error);
             }
@@ -1126,25 +1153,80 @@ impl ControlPanel {
                         let short_id = task.task_id.chars().take(8).collect::<String>();
                         let goal = task.goal_text.as_deref().unwrap_or("未命名任务");
                         let label = format!("{goal}\n{short_id} · {}", task.status);
-                        if ui
-                            .selectable_label(
-                                self.selected_replay.as_deref() == Some(task.task_id.as_str()),
-                                label,
-                            )
-                            .clicked()
-                        {
-                            open_task = Some((
-                                task.task_id.clone(),
-                                goal.to_owned(),
-                                task.recording_source.clone(),
-                            ));
-                        }
+                        ui.horizontal(|ui| {
+                            let delete_width = 52.0;
+                            if ui
+                                .add_sized(
+                                    [ui.available_width() - delete_width - 8.0, 42.0],
+                                    egui::Button::selectable(
+                                        self.selected_replay.as_deref()
+                                            == Some(task.task_id.as_str()),
+                                        label,
+                                    ),
+                                )
+                                .clicked()
+                            {
+                                open_task = Some((
+                                    task.task_id.clone(),
+                                    goal.to_owned(),
+                                    task.recording_source.clone(),
+                                ));
+                            }
+                            if ui
+                                .add_sized([delete_width, 30.0], egui::Button::new("删除"))
+                                .on_hover_text("删除该任务的 Rerun 录制与元数据")
+                                .clicked()
+                            {
+                                request_delete = Some(task.clone());
+                            }
+                        });
                     }
                 });
+            if let Some(task) = self.replay_delete_confirmation.as_ref() {
+                ui.separator();
+                let goal = task.goal_text.as_deref().unwrap_or("未命名任务");
+                ui.colored_label(
+                    egui::Color32::from_rgb(235, 95, 105),
+                    format!("确认永久删除“{goal}”？此操作无法撤销。"),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("确认删除").clicked() {
+                        confirm_delete = Some(task.clone());
+                    }
+                    if ui.button("取消").clicked() {
+                        cancel_delete = true;
+                    }
+                });
+            }
             if self.replay_loaded && replay_count == 0 && self.replay_error.is_none() {
                 ui.weak("暂无带 Rerun 录制的历史任务");
             }
         });
+        if let Some(task) = request_delete {
+            self.replay_delete_confirmation = Some(task);
+            self.replay_error = None;
+        }
+        if cancel_delete {
+            self.replay_delete_confirmation = None;
+        }
+        if let Some(task) = confirm_delete {
+            match self.sidecar.delete_replay_task(&task.task_dir) {
+                Ok(()) => {
+                    if self.selected_replay.as_deref() == Some(task.task_id.as_str()) {
+                        self.selected_replay = None;
+                        self.source_label = "实时数据".to_owned();
+                        self.requested_source = Some(rerun_url.to_owned());
+                    }
+                    self.replay_tasks = self.sidecar.replay_tasks();
+                    self.replay_delete_confirmation = None;
+                    self.replay_error = None;
+                }
+                Err(err) => {
+                    self.replay_error = Some(err);
+                    self.replay_delete_confirmation = None;
+                }
+            }
+        }
         if let Some((task_id, goal, recording_source)) = open_task {
             self.requested_source = Some(recording_source);
             self.selected_replay = Some(task_id);

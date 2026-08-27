@@ -1,12 +1,13 @@
 # Woosh Viewer for macOS
 
-Woosh Viewer is distributed as a Universal macOS application that supports both
-Apple Silicon and Intel Macs. It contains the native Rust data service and does
-not require Python or a separate sidecar.
+Woosh Viewer is distributed as separate native applications for Apple Silicon
+and Intel Macs. Each package contains the native Rust data service and does not
+require Python or a separate sidecar.
 
 ## Install
 
-1. Open `woosh-viewer-macos-universal.dmg`.
+1. Apple Silicon users open `woosh-viewer-macos-arm64.dmg`; Intel users open
+   `woosh-viewer-macos-intel-x64.dmg`.
 2. Drag **Woosh Viewer** to **Applications**.
 3. Start the application and allow local-network access when macOS asks.
 4. Open **连接设置**, enter the robot IP and port, then click the connection
@@ -30,9 +31,9 @@ chmod +x build-macos.sh
 ./build-macos.sh
 ```
 
-The script builds both `aarch64-apple-darwin` and `x86_64-apple-darwin`, merges
-them with `lipo`, applies an ad-hoc signature by default, and writes a ZIP, DMG,
-and SHA-256 file under `operator/woosh_viewer/dist`.
+The script builds `aarch64-apple-darwin` and `x86_64-apple-darwin` separately,
+applies an ad-hoc signature by default, and writes architecture-specific ZIP,
+DMG, and SHA-256 files under `operator/woosh_viewer/dist`.
 
 For a Developer ID signature, provide the identity before building:
 

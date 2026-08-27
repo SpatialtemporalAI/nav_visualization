@@ -52,6 +52,7 @@ pub struct NativeReplayTask {
     pub status: String,
     pub has_rerun_recording: bool,
     pub recording_source: String,
+    pub task_dir: PathBuf,
 }
 
 impl Default for NativeStatusSnapshot {
@@ -88,7 +89,6 @@ pub struct NativeSidecar {
     last_message_ms: Arc<AtomicU64>,
     status: Arc<Mutex<NativeStatusSnapshot>>,
     settings: Arc<Mutex<NativeSidecarSettings>>,
-    history_dir: PathBuf,
     thread: Option<JoinHandle<()>>,
     errors: mpsc::Receiver<String>,
 }
@@ -96,7 +96,6 @@ pub struct NativeSidecar {
 impl NativeSidecar {
     pub fn start(settings: NativeSidecarSettings) -> Result<Self, String> {
         let rerun_port = settings.rerun_port;
-        let history_dir = settings.history_dir.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let reconnect = Arc::new(AtomicBool::new(false));
         let connected = Arc::new(AtomicBool::new(false));
@@ -133,7 +132,6 @@ impl NativeSidecar {
             last_message_ms,
             status,
             settings,
-            history_dir,
             thread: Some(thread),
             errors,
         };
@@ -177,10 +175,6 @@ impl NativeSidecar {
             .lock()
             .map(|status| status.clone())
             .unwrap_or_default()
-    }
-
-    pub fn replay_tasks(&self) -> Vec<NativeReplayTask> {
-        list_replay_tasks(&self.history_dir)
     }
 
     pub fn rerun_port(&self) -> Option<u16> {
@@ -313,7 +307,7 @@ fn send_default_blueprint(rec: &rerun::RecordingStream) {
     .with_column_shares(vec![1.0, 1.0]);
     let details = Horizontal::new([
         TextLogView::new("Task Events").with_origin("events").into(),
-        TextDocumentView::new("实时数据")
+        TextDocumentView::new("Live Data")
             .with_origin("status/live")
             .into(),
     ])
@@ -834,7 +828,7 @@ impl NavigationLogger {
             (None, None) => "—".to_owned(),
         };
         let document = format!(
-            "**Robot**  \n{}\n\n**VPR**  \n{}\n\n**Goal**  \n{}\n\n---\n\n**模式**　{}  \n**地图**　{}  \n**路径**　{} 点",
+            "**Robot**  \n{}\n\n**VPR**  \n{}\n\n**Goal**  \n{}\n\n---\n\n**Mode**　{}  \n**Map**　{}  \n**Path**　{} points",
             pose(status.robot_pose.as_ref()),
             pose(status.vpr_pose.as_ref()),
             pose(status.goal_pose.as_ref()),
@@ -1165,7 +1159,7 @@ fn apply_runs(mask: &mut [u8], runs: Option<&Value>, class_id: u8) {
     }
 }
 
-fn list_replay_tasks(history_dir: &std::path::Path) -> Vec<NativeReplayTask> {
+pub fn replay_tasks_in(history_dir: &std::path::Path) -> Vec<NativeReplayTask> {
     let Ok(entries) = std::fs::read_dir(history_dir) else {
         return Vec::new();
     };
@@ -1213,14 +1207,56 @@ fn list_replay_tasks(history_dir: &std::path::Path) -> Vec<NativeReplayTask> {
                     .to_owned(),
                 has_rerun_recording: true,
                 recording_source: recording.to_string_lossy().into_owned(),
+                task_dir,
             })
         })
         .collect()
 }
 
+pub fn delete_replay_task(
+    history_dir: &std::path::Path,
+    task_dir: &std::path::Path,
+) -> Result<(), String> {
+    let history_dir = history_dir
+        .canonicalize()
+        .map_err(|err| format!("无法访问任务记录目录 {}：{err}", history_dir.display()))?;
+    let task_dir = task_dir
+        .canonicalize()
+        .map_err(|err| format!("无法访问任务记录 {}：{err}", task_dir.display()))?;
+    if task_dir.parent() != Some(history_dir.as_path()) || !task_dir.join("recording.rrd").is_file()
+    {
+        return Err("拒绝删除：所选目录不是有效的任务记录".to_owned());
+    }
+    std::fs::remove_dir_all(&task_dir)
+        .map_err(|err| format!("无法删除任务记录 {}：{err}", task_dir.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replay_task_deletion_is_limited_to_a_direct_history_child() {
+        let root = std::env::temp_dir().join(format!(
+            "woosh-viewer-delete-test-{}-{}",
+            std::process::id(),
+            now_millis()
+        ));
+        let history = root.join("rerun-history");
+        let task = history.join("task-1");
+        let outside = root.join("outside");
+        std::fs::create_dir_all(&task).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(task.join("recording.rrd"), b"test").unwrap();
+        std::fs::write(outside.join("recording.rrd"), b"test").unwrap();
+
+        assert!(delete_replay_task(&history, &outside).is_err());
+        assert!(outside.is_dir());
+        delete_replay_task(&history, &task).unwrap();
+        assert!(!task.exists());
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn start_returns_only_after_rerun_server_is_reachable() {
