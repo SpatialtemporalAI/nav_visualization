@@ -8,7 +8,8 @@ The application now contains the complete former sidecar data path in Rust:
 - fetches map metadata, occupancy images, and announced camera frames;
 - logs robot/VPR poses, goals, paths, dynamic occupancy, and events to the
   embedded Rerun server;
-- records task `.rrd` files under `%LOCALAPPDATA%\Woosh\rerun-history`;
+- records task `.rrd` files beside the Windows executable under `rerun-history`
+  (macOS uses `~/Library/Application Support/Woosh/rerun-history`);
 - sends navigation commands directly to the robot only after an explicit click.
 
 Python, PyArrow, uv, FastAPI, and a second Rerun binary are not needed at runtime.
@@ -16,7 +17,7 @@ Python, PyArrow, uv, FastAPI, and a second Rerun binary are not needed at runtim
 ## Run from source
 
 ```powershell
-cargo run --release -- --robot-ip 192.168.123.161 --robot-port 8008
+cargo run --release -- --robot-ip 192.168.1.10 --robot-port 8008
 ```
 
 Command-line flags override `woosh-viewer.toml`. Packaged Windows builds read
@@ -61,8 +62,9 @@ chmod +x build-macos.sh
 ./build-macos.sh
 ```
 
-The script produces a Universal Application for Apple Silicon and Intel Macs,
-then packages it as `dist/woosh-viewer-macos-universal.zip` and `.dmg`. See
+The script builds separate native applications for Apple Silicon and Intel Macs,
+then packages architecture-specific ZIP, DMG, and SHA-256 files under `dist`.
+See
 [README-MACOS.md](README-MACOS.md) for installation and signing details.
 
 ## Data and control routes

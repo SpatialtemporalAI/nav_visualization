@@ -8,8 +8,8 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BUNDLE_ROOT = "woosh-windows"
-DEFAULT_OUTPUT = REPO_ROOT / "dist" / "woosh-windows-source.zip"
+BUNDLE_ROOT = "nav_visualization"
+DEFAULT_OUTPUT = REPO_ROOT / "dist" / "nav-visualization-source.zip"
 
 # Explicit allow-list: do not let robot maps, logs, caches, tests, Git history,
 # credentials, or navigation code leak into the Windows transfer package.

@@ -67,7 +67,7 @@ favor of recent data. Navigation execution remains independent.
 Prepare the Rerun 0.36.1 environment on the remote computer, not on the robot:
 
 ```bash
-cd /path/to/R-nav
+cd /path/to/nav_visualization
 uv sync --project ./rerun_bridge --extra sidecar --locked
 ```
 
@@ -81,9 +81,9 @@ uses a process-local lock there and a process/file lock combination on Linux.
 Replace the address with the robot's LAN address:
 
 ```bash
-cd /path/to/R-nav/src
+cd /path/to/nav_visualization/src
 uv run --project ../rerun_bridge --extra sidecar --locked python run_rerun_sidecar.py \
-  --upstream http://192.168.123.161:8008 \
+  --upstream http://192.168.1.10:8008 \
   --control-port 8010 \
   --rerun-port 9876
 ```
@@ -95,8 +95,8 @@ On Windows PowerShell, the repository includes a launcher that prepares the
 locked environment and starts only the remote sidecar:
 
 ```powershell
-cd C:\path\to\R-nav\operator\woosh_viewer
-.\run-sidecar-windows.ps1 -RobotIp 192.168.123.161
+cd C:\path\to\nav_visualization\operator\woosh_viewer
+.\run-sidecar-windows.ps1 -RobotIp 192.168.1.10
 ```
 
 Use `-SkipSync` after the environment has already been prepared and verified.

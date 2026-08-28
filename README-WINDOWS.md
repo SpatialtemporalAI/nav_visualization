@@ -15,11 +15,14 @@
 
 按 Enter 不会提交导航任务。填写目标地点并确认选项后，必须点击“开始导航”。
 
-连接设置保存在 exe 旁的 `woosh-viewer.toml`。本机任务回放保存在：
+连接设置保存在 exe 旁的 `woosh-viewer.toml`。本机任务回放保存在 exe 同目录：
 
 ```text
-%LOCALAPPDATA%\Woosh\rerun-history
+rerun-history\
 ```
+
+可在应用的“任务记录”中删除单项记录。直接移动整个解压目录时，配置与任务记录也会
+一同移动，便于管理和查找。
 
 ## 发行包内容
 
@@ -37,7 +40,7 @@ woosh-viewer.toml     机器人地址和本机 Rerun 端口
 1.95.0。在 PowerShell 中执行：
 
 ```powershell
-cd C:\path\to\woosh-windows\operator\woosh_viewer
+cd C:\path\to\nav_visualization\operator\woosh_viewer
 .\build-windows.ps1
 ```
 
