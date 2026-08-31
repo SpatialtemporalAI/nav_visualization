@@ -10,6 +10,12 @@ X86_64_BINARY="${SCRIPT_DIR}/target/x86_64-apple-darwin/release/woosh-viewer"
 PACKAGE_ONLY=0
 SELECTED_ARCH=""
 BINARY_OVERRIDE=""
+APP_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${SCRIPT_DIR}/Cargo.toml" | head -n 1)"
+
+if [[ -z "${APP_VERSION}" ]]; then
+    echo "Unable to read the application version from Cargo.toml." >&2
+    exit 1
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -110,6 +116,8 @@ for arch in "${ARCHES[@]}"; do
     cp "${binary}" "${MACOS_DIR}/woosh-viewer"
     chmod 755 "${MACOS_DIR}/woosh-viewer"
     cp "${SCRIPT_DIR}/macos/Info.plist" "${CONTENTS_DIR}/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" "${CONTENTS_DIR}/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${APP_VERSION}" "${CONTENTS_DIR}/Info.plist"
     cp "${SCRIPT_DIR}/README-MACOS.md" "${RESOURCES_DIR}/README-MACOS.md"
     cp "${REPO_ROOT}/LICENSE-MIT" "${RESOURCES_DIR}/LICENSE-MIT"
     cp "${REPO_ROOT}/LICENSE-APACHE" "${RESOURCES_DIR}/LICENSE-APACHE"
