@@ -375,6 +375,12 @@ impl SidecarManager {
             .unwrap_or_default()
     }
 
+    fn set_navigation_running_from_control(&self, running: bool) {
+        if let Some(worker) = self.worker.as_ref() {
+            worker.set_navigation_running_from_control(running);
+        }
+    }
+
     fn replay_tasks(&self) -> Vec<ReplayTask> {
         replay_tasks_in(&self.history_dir)
     }
@@ -998,6 +1004,14 @@ impl ControlPanel {
                     }
                     if let Some(running) = data.navigation_running {
                         self.navigation_running = running;
+                        self.sidecar.set_navigation_running_from_control(running);
+                        if running {
+                            if !is_active_task_status(&self.task_status) {
+                                self.task_status = "accepted".to_owned();
+                            }
+                        } else if is_active_task_status(&self.task_status) {
+                            self.task_status = "stopped".to_owned();
+                        }
                     }
                 }
                 Err(err) => match event.kind {
@@ -1537,22 +1551,46 @@ impl ControlPanel {
             });
             ui.add_space(5.0);
             let stop_pending = self.pending.contains(&ActionKind::Stop);
+            let can_stop =
+                can_stop_navigation(self.control_online, self.navigation_running, stop_pending);
+            let stop_active = self.navigation_running || stop_pending;
             let stop_button = centered_button(
                 egui::RichText::new(if stop_pending {
                     "正在停止…"
-                } else {
+                } else if self.navigation_running {
                     "停止导航"
+                } else {
+                    "当前无导航任务"
                 })
-                .color(egui::Color32::WHITE)
+                .color(if stop_active {
+                    egui::Color32::WHITE
+                } else {
+                    ui.visuals().weak_text_color()
+                })
                 .strong(),
             )
-            .fill(egui::Color32::from_rgb(205, 67, 73))
-            .stroke(egui::Stroke::NONE)
+            .fill(if stop_active {
+                egui::Color32::from_rgb(205, 67, 73)
+            } else {
+                ui.visuals().faint_bg_color
+            })
+            .stroke(if stop_active {
+                egui::Stroke::NONE
+            } else {
+                ui.visuals().widgets.inactive.bg_stroke
+            })
             .corner_radius(9)
             .min_size(egui::vec2(ui.available_width(), 36.0));
+            let disabled_reason = if !self.control_online {
+                "连接机器人控制服务后可用"
+            } else if !self.navigation_running {
+                "当前没有正在执行的导航任务"
+            } else {
+                "停止请求正在处理中"
+            };
             if ui
-                .add_enabled(self.control_online && !stop_pending, stop_button)
-                .on_disabled_hover_text("连接机器人控制服务后可用")
+                .add_enabled(can_stop, stop_button)
+                .on_disabled_hover_text(disabled_reason)
                 .clicked()
             {
                 self.dispatch(ControlCommand::Stop, ui.ctx().clone());
@@ -1596,13 +1634,33 @@ fn status_dot(ui: &mut egui::Ui, online: bool) {
 }
 
 fn task_status_label(status: &str) -> &'static str {
+    if is_active_task_status(status) {
+        return "执行中";
+    }
     match status.to_ascii_lowercase().as_str() {
-        "processing" | "busy" => "执行中",
         "completed" | "success" | "succeeded" => "已完成",
         "failed" | "error" | "aborted" => "异常",
         "cancelled" | "canceled" | "stopped" => "已停止",
         _ => "待命",
     }
+}
+
+fn is_active_task_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "accepted"
+            | "queued"
+            | "running"
+            | "planning"
+            | "navigating"
+            | "executing"
+            | "processing"
+            | "busy"
+    )
+}
+
+fn can_stop_navigation(control_online: bool, navigation_running: bool, stop_pending: bool) -> bool {
+    control_online && navigation_running && !stop_pending
 }
 
 fn section_toggle(ui: &mut egui::Ui, title: &str, open: bool) -> bool {
@@ -1655,5 +1713,13 @@ mod tests {
         assert_eq!(config.robot_port, Some(8008));
         assert_eq!(config.rerun_port, Some(9876));
         assert!(config.rerun_url.is_none());
+    }
+
+    #[test]
+    fn stop_button_requires_an_active_navigation() {
+        assert!(!can_stop_navigation(true, false, false));
+        assert!(!can_stop_navigation(false, true, false));
+        assert!(!can_stop_navigation(true, true, true));
+        assert!(can_stop_navigation(true, true, false));
     }
 }

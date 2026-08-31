@@ -177,6 +177,16 @@ impl NativeSidecar {
             .unwrap_or_default()
     }
 
+    pub fn set_navigation_running_from_control(&self, running: bool) {
+        let Ok(mut status) = self.status.lock() else {
+            return;
+        };
+        if status.navigation_running != running {
+            status.task_status = if running { "accepted" } else { "stopped" }.to_owned();
+        }
+        status.navigation_running = running;
+    }
+
     pub fn rerun_port(&self) -> Option<u16> {
         self.settings
             .lock()

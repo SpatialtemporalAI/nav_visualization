@@ -6,7 +6,7 @@ Viewer，并由同一个 Rust 进程完成机器人数据接入、地图与相�
 
 ## 下载
 
-在 [v0.2.0 Release](https://github.com/SpatialtemporalAI/nav_visualization/releases/tag/v0.2.0)
+在 [v0.2.1 Release](https://github.com/SpatialtemporalAI/nav_visualization/releases/tag/v0.2.1)
 中按电脑平台下载：
 
 | 平台 | 推荐安装包 |
@@ -45,7 +45,7 @@ Woosh Viewer (Rust)
 
 ## 使用 Release
 
-从 [GitHub Release](https://github.com/SpatialtemporalAI/nav_visualization/releases/tag/v0.2.0)
+从 [GitHub Release](https://github.com/SpatialtemporalAI/nav_visualization/releases/tag/v0.2.1)
 下载并解压 `woosh-viewer-windows-x64.zip`，双击
 `woosh-viewer.exe`，填写机器人 IP 后点击“连接机器人”。目标电脑不需要联网安装
 依赖，也不需要 Python、Rust 或 ROS 2。
